@@ -6,9 +6,8 @@ export default function PrivateRoute({ children }) {
   const hasToken = isAuth || !!sessionStorage.getItem('skai_token')
 
   // ── DEV BYPASS ──
-  // Remove this line when backend is ready
-  if (import.meta.env.DEV) return children
 
   if (!hasToken) return <Navigate to="/login" replace />
   return children
 }
+
