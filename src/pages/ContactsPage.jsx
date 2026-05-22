@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useThemeStore from '../store/themeStore'
 import useAuthStore from '../store/authStore'
@@ -71,23 +71,7 @@ function getAvatarColor(id) {
   return AVATAR_COLORS[id % AVATAR_COLORS.length]
 }
 
-// ── MOCK DATA ───────────────────────────────────────────────
-const MOCK_CONTACTS = [
-  { requestId: 1, userId: 10, username: 'Priya Sharma',  phoneNumber: '9876543210', about: 'Available' },
-  { requestId: 2, userId: 11, username: 'Rahul Verma',   phoneNumber: '8765432109', about: 'Busy — in a meeting' },
-  { requestId: 3, userId: 12, username: 'Sneha Patel',   phoneNumber: '7654321098', about: 'Hey there!' },
-  { requestId: 4, userId: 13, username: 'Vikram Singh',  phoneNumber: '6543210987', about: 'Photography enthusiast' },
-]
-const MOCK_INCOMING = [
-  { requestId: 5, userId: 20, username: 'Kavya Nair',    phoneNumber: '5432109876', about: 'Living my best life' },
-  { requestId: 6, userId: 21, username: 'Dev Joshi',     phoneNumber: '4321098765', about: 'Software engineer' },
-]
-const MOCK_SEARCH = [
-  { id: 30, username: 'Ananya Roy',    phoneNumber: '3210987654', about: 'Coffee lover ☕',    status: 'none'    },
-  { id: 31, username: 'Karan Mehta',   phoneNumber: '2109876543', about: 'Music producer 🎵', status: 'none'    },
-  { id: 32, username: 'Priya Sharma',  phoneNumber: '9876543210', about: 'Available',          status: 'friend'  },
-  { id: 33, username: 'Riya Kapoor',   phoneNumber: '1098765432', about: 'Traveller ✈️',      status: 'pending' },
-]
+// ── NO MOCK DATA — all real API ─────────────────────────────
 
 // ── SECTION LABEL ───────────────────────────────────────────
 function SectionLabel({ children }) {
@@ -190,13 +174,14 @@ export default function ContactsPage() {
   const user = useAuthStore((s) => s.user)
 
   // ── state
-  const [contacts, setContacts]   = useState(MOCK_CONTACTS)
-  const [incoming, setIncoming]   = useState(MOCK_INCOMING)
-  const [searchQ, setSearchQ]     = useState('')
-  const [searchRes, setSearchRes] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [toast, setToast]         = useState('')
+  const [contacts,    setContacts]    = useState([])
+  const [incoming,    setIncoming]    = useState([])
+  const [searchQ,     setSearchQ]     = useState('')
+  const [searchRes,   setSearchRes]   = useState([])
+  const [searching,   setSearching]   = useState(false)
+  const [toast,       setToast]       = useState('')
   const [searchTimer, setSearchTimer] = useState(null)
+  const [pageLoading, setPageLoading] = useState(true)
 
   // ── show toast briefly
   function showToast(msg) {
@@ -204,66 +189,122 @@ export default function ContactsPage() {
     setTimeout(() => setToast(''), 2500)
   }
 
-  // ── live search with 400ms debounce
+  // ── load contacts + incoming requests on mount
+  useEffect(() => {
+    async function loadAll() {
+      setPageLoading(true)
+      try {
+        const [contactsRes, requestsRes] = await Promise.all([
+          api.get('/api/contacts'),          // GET /api/contacts
+          api.get('/api/contacts/requests'), // GET /api/contacts/requests
+        ])
+        setContacts(contactsRes.data)
+        setIncoming(requestsRes.data)
+      } catch (err) {
+        showToast('Failed to load contacts')
+      } finally {
+        setPageLoading(false)
+      }
+    }
+    loadAll()
+  }, [])
+
+  // ── REAL API: live search with 400ms debounce
+  // GET /api/users/search?q=
   function handleSearch(val) {
     setSearchQ(val)
     clearTimeout(searchTimer)
     if (val.trim().length < 2) { setSearchRes([]); setSearching(false); return }
     setSearching(true)
-    const t = setTimeout(() => {
-      // real API: api.get(`/api/users/search?q=${val}`).then(res => setSearchRes(res.data))
-      const results = MOCK_SEARCH.filter(u =>
-        u.username.toLowerCase().includes(val.toLowerCase()) ||
-        u.phoneNumber.includes(val)
-      )
-      setSearchRes(results)
-      setSearching(false)
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/users/search?q=${encodeURIComponent(val.trim())}`)
+        // mark each result with status: 'none' | 'pending' | 'friend'
+        const contactIds = contacts.map(c => c.userId)
+        const incomingIds = incoming.map(r => r.userId)
+        const results = res.data.map(u => ({
+          ...u,
+          status: contactIds.includes(u.id)  ? 'friend'
+                : incomingIds.includes(u.id) ? 'pending'
+                : 'none',
+        }))
+        setSearchRes(results)
+      } catch (err) {
+        showToast('Search failed. Please try again.')
+      } finally {
+        setSearching(false)
+      }
     }, 400)
     setSearchTimer(t)
   }
 
-  // ── send friend request
+  // ── REAL API: send friend request
+  // POST /api/contacts/request
   async function sendRequest(userId, username) {
-    // real API: await api.post('/api/contacts/request', { receiverId: userId })
-    setSearchRes(prev => prev.map(u =>
-      u.id === userId ? { ...u, status: 'pending' } : u
-    ))
-    showToast(`Request sent to ${username}`)
-  }
-
-  // ── cancel sent request
-  async function cancelRequest(userId, username) {
-    // real API: await api.delete(`/api/contacts/decline/${requestId}`)
-    setSearchRes(prev => prev.map(u =>
-      u.id === userId ? { ...u, status: 'none' } : u
-    ))
-    showToast('Request cancelled')
-  }
-
-  // ── accept incoming request
-  async function acceptRequest(requestId, username) {
-    // real API: await api.put(`/api/contacts/accept/${requestId}`)
-    const accepted = incoming.find(r => r.requestId === requestId)
-    if (accepted) {
-      setContacts(prev => [...prev, accepted])
-      setIncoming(prev => prev.filter(r => r.requestId !== requestId))
-      showToast(`You and ${username} are now connected`)
+    try {
+      await api.post('/api/contacts/request', { receiverId: userId })
+      setSearchRes(prev => prev.map(u =>
+        u.id === userId ? { ...u, status: 'pending' } : u
+      ))
+      showToast(`Request sent to ${username}`)
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to send request')
     }
   }
 
-  // ── decline incoming request
-  async function declineRequest(requestId, username) {
-    // real API: await api.delete(`/api/contacts/decline/${requestId}`)
-    setIncoming(prev => prev.filter(r => r.requestId !== requestId))
-    showToast(`Request from ${username} declined`)
+  // ── REAL API: cancel sent request
+  // DELETE /api/contacts/decline/:id
+  async function cancelRequest(requestId, username) {
+    try {
+      await api.delete(`/api/contacts/decline/${requestId}`)
+      setSearchRes(prev => prev.map(u =>
+        u.id === requestId ? { ...u, status: 'none' } : u
+      ))
+      showToast('Request cancelled')
+    } catch (err) {
+      showToast('Failed to cancel request')
+    }
   }
 
-  // ── remove contact
+  // ── REAL API: accept incoming request
+  // PUT /api/contacts/accept/:id
+  async function acceptRequest(requestId, username) {
+    try {
+      await api.put(`/api/contacts/accept/${requestId}`)
+      const accepted = incoming.find(r => r.requestId === requestId)
+      if (accepted) {
+        setContacts(prev => [...prev, accepted])
+        setIncoming(prev => prev.filter(r => r.requestId !== requestId))
+      }
+      showToast(`You and ${username} are now connected`)
+    } catch (err) {
+      showToast('Failed to accept request')
+    }
+  }
+
+  // ── REAL API: decline incoming request
+  // DELETE /api/contacts/decline/:id
+  async function declineRequest(requestId, username) {
+    try {
+      await api.delete(`/api/contacts/decline/${requestId}`)
+      setIncoming(prev => prev.filter(r => r.requestId !== requestId))
+      showToast(`Request from ${username} declined`)
+    } catch (err) {
+      showToast('Failed to decline request')
+    }
+  }
+
+  // ── REAL API: remove contact
+  // DELETE /api/contacts/:id
   async function removeContact(requestId, username) {
     if (!window.confirm(`Remove ${username} from contacts?`)) return
-    // real API: await api.delete(`/api/contacts/${requestId}`)
-    setContacts(prev => prev.filter(c => c.requestId !== requestId))
-    showToast(`${username} removed from contacts`)
+    try {
+      await api.delete(`/api/contacts/${requestId}`)
+      setContacts(prev => prev.filter(c => c.requestId !== requestId))
+      showToast(`${username} removed from contacts`)
+    } catch (err) {
+      showToast('Failed to remove contact')
+    }
   }
 
   // ── RENDER ─────────────────────────────────────────────
@@ -402,7 +443,11 @@ export default function ContactsPage() {
         <div className="sk-card" style={{ padding: '28px 28px 24px', marginBottom: 16 }}>
           <SectionLabel>My contacts · {contacts.length}</SectionLabel>
 
-          {contacts.length === 0 ? (
+          {pageLoading ? (
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', padding: '12px 0' }}>
+              Loading contacts...
+            </div>
+          ) : contacts.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
