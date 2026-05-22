@@ -51,32 +51,13 @@ function formatConvTime(dateStr) {
 }
 
 // ── MOCK DATA (replace with real API calls) ─────────────────
-const MOCK_CONVS = [
-  { id: 1, otherUserId: 10, otherUsername: 'Priya Sharma',  otherUserPhone: '+91 98765 43210', otherUserAbout: 'Available',            lastMessage: 'Hey! Are you coming tonight?', lastMessageAt: new Date().toISOString(),                         unread: 2 },
-  { id: 2, otherUserId: 11, otherUsername: 'Rahul Verma',   otherUserPhone: '+91 87654 32109', otherUserAbout: 'Busy — in a meeting',  lastMessage: 'The report is done ✓',         lastMessageAt: new Date(Date.now()-3600000).toISOString(),       unread: 0 },
-  { id: 3, otherUserId: 12, otherUsername: 'Sneha Patel',   otherUserPhone: '+91 76543 21098', otherUserAbout: 'Hey there!',           lastMessage: 'Sounds great!',                lastMessageAt: new Date(Date.now()-86400000).toISOString(),      unread: 0 },
-  { id: 4, otherUserId: 13, otherUsername: 'Arjun Mehta',   otherUserPhone: '+91 65432 10987', otherUserAbout: 'At the gym 💪',        lastMessage: 'Ok see you then',              lastMessageAt: new Date(Date.now()-86400000*2).toISOString(),    unread: 0 },
-  { id: 5, otherUserId: 14, otherUsername: 'Vikram Singh',  otherUserPhone: '+91 54321 09876', otherUserAbout: 'Photography enthusiast',lastMessage: 'Thanks for the help!',        lastMessageAt: new Date(Date.now()-86400000*3).toISOString(),    unread: 0 },
-]
+//const MOCK_CONVS = [
+  
+//]
 
-const MOCK_MSGS = {
-  1: [
-    { id: 'm1', senderId: 10, content: 'Hey! Are you free this evening?',              createdAt: new Date(Date.now()-25*60000).toISOString(), isRead: true,  isDelivered: true  },
-    { id: 'm2', senderId: 10, content: "We're planning a small get-together 🎉",       createdAt: new Date(Date.now()-24*60000).toISOString(), isRead: true,  isDelivered: true  },
-    { id: 'm3', senderId: 1,  content: 'That sounds amazing! What time?',              createdAt: new Date(Date.now()-20*60000).toISOString(), isRead: true,  isDelivered: true  },
-    { id: 'm4', senderId: 10, content: 'Around 7 PM. Bring snacks if you can 😄',     createdAt: new Date(Date.now()-18*60000).toISOString(), isRead: true,  isDelivered: true  },
-    { id: 'm5', senderId: 1,  content: "Sure! I'll get some chips and drinks 🙌",     createdAt: new Date(Date.now()-15*60000).toISOString(), isRead: false, isDelivered: true  },
-    { id: 'm6', senderId: 10, content: 'Hey! Are you coming tonight?',                 createdAt: new Date(Date.now()-2*60000).toISOString(),  isRead: false, isDelivered: false },
-  ],
-  2: [
-    { id: 'm7', senderId: 11, content: 'Have you reviewed the Q3 report?',             createdAt: new Date(Date.now()-2*3600000).toISOString(), isRead: true, isDelivered: true },
-    { id: 'm8', senderId: 1,  content: "Yes, looks good! Minor edits needed.",         createdAt: new Date(Date.now()-1.5*3600000).toISOString(), isRead: true, isDelivered: true },
-    { id: 'm9', senderId: 11, content: 'The report is done ✓',                         createdAt: new Date(Date.now()-3600000).toISOString(), isRead: true, isDelivered: true },
-  ],
-  3: [{ id: 'm10', senderId: 1,  content: 'Sounds great!', createdAt: new Date(Date.now()-86400000).toISOString(), isRead: true, isDelivered: true }],
-  4: [{ id: 'm11', senderId: 1,  content: 'Ok see you then', createdAt: new Date(Date.now()-86400000*2).toISOString(), isRead: true, isDelivered: true }],
-  5: [{ id: 'm12', senderId: 14, content: 'Thanks for the help!', createdAt: new Date(Date.now()-86400000*3).toISOString(), isRead: true, isDelivered: true }],
-}
+//const MOCK_MSGS = {
+  
+//}
 
 // ── STYLES ─────────────────────────────────────────────────
 const S = {
@@ -122,7 +103,7 @@ export default function ChatPage() {
   const { theme, toggleDark } = useThemeStore()
 
   // ── state
-  const [convs, setConvs]           = useState(MOCK_CONVS)
+  const [convs, setConvs]           = useState([])
   const [messages, setMessages]     = useState({})
   const [activeConv, setActiveConv] = useState(null)   // full conv object
   const [msgInput, setMsgInput]     = useState('')
@@ -141,10 +122,19 @@ export default function ChatPage() {
   }, [])
 
   // ── load conversations on mount (replace with real API)
-  useEffect(() => {
-    // api.get('/api/conversations').then(res => setConvs(res.data))
-    setMessages(MOCK_MSGS)
-  }, [])
+  // ── load conversations on mount
+useEffect(() => {
+  loadConversations()
+}, [])
+
+async function loadConversations() {
+  try {
+    const res = await api.get('/api/conversations')
+    setConvs(res.data)
+  } catch (err) {
+    console.error('Failed to load conversations', err)
+  }
+}
 
   // ── scroll to bottom when messages change
   useEffect(() => {
@@ -152,13 +142,34 @@ export default function ChatPage() {
   }, [messages, activeConv])
 
   // ── open a conversation
-  function openConv(conv) {
+  async function openConv(conv) {
     setActiveConv(conv)
     // clear unread badge
     setConvs(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c))
-    // on mobile: hide left panel, show right
-    if (isMobile) setShowPanel(false)
-    // mark as read — real API: api.put(`/api/messages/read/${conv.id}`)
+    try {
+      // real API call
+      // Load messages from backend
+         const res = await api.post('/api/messages/send', {
+         conversationId: activeConv.id,
+         content: text,
+         })
+      // replace tmp message with real one from server
+      // simulate tick upgrade after 1.2s
+      //setTimeout(() => {
+        setMessages(prev => ({
+          ...prev,
+          [activeConv.id]: (prev[activeConv.id] || []).map(m =>
+            m.id === newMsg.id ? { ...m, isDelivered: true } : m
+          ),
+        }))
+        // on mobile: hide left panel, show right
+      if (isMobile) setShowPanel(false)
+      await api.put(`/api/messages/read/${conv.id}`)
+      //}, 1200)
+    } catch (err) {
+      console.error('Send failed', err)
+    }
+  }
   }
 
   // ── go back to list (mobile only)
@@ -184,7 +195,9 @@ export default function ChatPage() {
     // optimistic update — show message immediately
     setMessages(prev => ({
       ...prev,
-      [activeConv.id]: [...(prev[activeConv.id] || []), newMsg],
+      [activeConv.id]: (prev[activeConv.id] || []).map(m =>
+      m.id === newMsg.id ? res.data : m
+      ),
     }))
 
     // update last message in conv list
@@ -201,20 +214,21 @@ export default function ChatPage() {
 
     try {
       // real API call
-      // const res = await api.post('/api/messages/send', {
-      //   conversationId: activeConv.id,
-      //   content: text,
-      // })
+      // Load messages from backend
+         const res = await api.post('/api/messages/send', {
+         conversationId: activeConv.id,
+         content: text,
+         })
       // replace tmp message with real one from server
       // simulate tick upgrade after 1.2s
-      setTimeout(() => {
+      //setTimeout(() => {
         setMessages(prev => ({
           ...prev,
           [activeConv.id]: (prev[activeConv.id] || []).map(m =>
             m.id === newMsg.id ? { ...m, isDelivered: true } : m
           ),
         }))
-      }, 1200)
+      //}, 1200)
     } catch (err) {
       console.error('Send failed', err)
     }
