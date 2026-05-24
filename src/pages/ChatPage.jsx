@@ -141,32 +141,41 @@ export default function ChatPage() {
   // REAL API: LOAD CONVERSATIONS
   // GET /api/conversations
   // ══════════════════════════════════════════════════════════
-  const loadConversations = useCallback(async () => {
-    setConvsLoading(true)
-    setConvsError('')
+  // ── FIX: silent=true during polling — never flicker the UI
+  const loadConversations = useCallback(async (silent = false) => {
+    if (!silent) {
+      setConvsLoading(true)
+      setConvsError('')
+    }
     try {
       const res = await api.get('/api/conversations')
-      // res.data is array of ConversationResponse from backend
-      setConvs(res.data)
+      setConvs(prev => {
+        // smart merge — only update state if data actually changed
+        // this stops React from re-rendering the list on every poll
+        const incoming = JSON.stringify(res.data)
+        const current  = JSON.stringify(prev)
+        if (incoming === current) return prev
+        return res.data
+      })
     } catch (err) {
       if (err.response?.status === 401) {
         clearAuth()
         navigate('/login')
         return
       }
-      setConvsError('Failed to load conversations. Check your connection.')
+      if (!silent) setConvsError('Failed to load conversations. Check your connection.')
     } finally {
-      setConvsLoading(false)
+      if (!silent) setConvsLoading(false)
     }
   }, [clearAuth, navigate])
 
   // load on mount
   useEffect(() => {
-    loadConversations()
+    loadConversations(false)
   }, [loadConversations])
 
   // ══════════════════════════════════════════════════════════
-  // REAL API: LOAD MESSAGES
+  // REAL API: LOAD MESSAGES — silent during polling
   // GET /api/messages/:convId
   // ══════════════════════════════════════════════════════════
   const loadMessages = useCallback(async (convId, silent = false) => {
@@ -174,16 +183,21 @@ export default function ChatPage() {
     setMsgsError('')
     try {
       const res = await api.get(`/api/messages/${convId}`)
-      setMessages(prev => ({ ...prev, [convId]: res.data }))
+      setMessages(prev => {
+        // smart merge — only update if messages actually changed
+        const incoming = JSON.stringify(res.data)
+        const current  = JSON.stringify(prev[convId] || [])
+        if (incoming === current) return prev
+        return { ...prev, [convId]: res.data }
+      })
 
-      // ── REAL API: MARK AS READ
-      // PUT /api/messages/read/:convId
-      await api.put(`/api/messages/read/${convId}`)
-
-      // clear unread badge for this conv
-      setConvs(prev => prev.map(c =>
-        c.id === convId ? { ...c, unread: 0 } : c
-      ))
+      // mark as read only when user actively opens the chat (not on poll)
+      if (!silent) {
+        await api.put(`/api/messages/read/${convId}`)
+        setConvs(prev => prev.map(c =>
+          c.id === convId ? { ...c, unread: 0 } : c
+        ))
+      }
     } catch (err) {
       if (!silent) setMsgsError('Failed to load messages.')
     } finally {
@@ -192,19 +206,16 @@ export default function ChatPage() {
   }, [])
 
   // ══════════════════════════════════════════════════════════
-  // POLLING — fetch new messages every 3 seconds
-  // Phase 2: replace with WebSocket for real-time
+  // POLLING — every 4 seconds, always silent
+  // No loading spinners, no flickering, no re-renders
+  // unless data actually changed
   // ══════════════════════════════════════════════════════════
   useEffect(() => {
-    // start polling
     pollRef.current = setInterval(() => {
+      loadConversations(true)                         // silent conv refresh
       const conv = activeConvRef.current
-      if (conv) {
-        loadMessages(conv.id, true)   // silent = true (no loading spinner)
-      }
-      // also refresh conv list for last message preview + unread counts
-      loadConversations()
-    }, 3000)
+      if (conv) loadMessages(conv.id, true)           // silent msg refresh
+    }, 4000)
 
     return () => clearInterval(pollRef.current)
   }, [loadMessages, loadConversations])
