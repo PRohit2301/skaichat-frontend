@@ -8,7 +8,7 @@
 
 | Service | URL |
 |---------|-----|
-| Frontend App | `https://skai-chat.vercel.app` |
+| Frontend App | `https://skaichat-frontend.vercel.app` |
 | Backend API | `https://your-app.onrender.com` |
 
 ---
